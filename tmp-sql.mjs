@@ -1,0 +1,11 @@
+﻿import initSqlJs from 'sql.js';
+import { createRequire } from 'module';
+import fs from 'fs';
+import path from 'path';
+const require = createRequire(import.meta.url);
+const wasmPath = path.join(path.dirname(require.resolve('sql.js')), 'dist', 'sql-wasm.wasm');
+console.log('wasm exists', fs.existsSync(wasmPath), wasmPath);
+const SQL = await initSqlJs({ locateFile: f => path.join(path.dirname(require.resolve('sql.js')), 'dist', f) });
+const db = new SQL.Database();
+db.run('CREATE TABLE t(id INTEGER); INSERT INTO t VALUES (1);');
+console.log(db.exec('SELECT * FROM t'));

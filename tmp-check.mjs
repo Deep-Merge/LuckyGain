@@ -1,0 +1,10 @@
+﻿const res = await fetch('http://127.0.0.1:5173/src/main.tsx');
+console.log('main', res.status);
+const app = await fetch('http://127.0.0.1:5173/src/App.tsx');
+console.log('app', app.status);
+const client = await fetch('http://127.0.0.1:5173/src/lib/db/client.ts');
+const t = await client.text();
+console.log('client status', client.status);
+console.log(t.slice(0, 300));
+const sqljs = await fetch('http://127.0.0.1:5173/node_modules/sql.js/dist/sql-wasm.js');
+console.log('sql-wasm.js', sqljs.status);

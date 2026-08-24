@@ -1,0 +1,18 @@
+# LuckyGain
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+src-tauri/target
+*.db
+*.db-*
+.vscode/*
+!.vscode/extensions.json
+.env
+.env.*
+!.env.example
+release
+release/**
+*.exe
+*.blockmap

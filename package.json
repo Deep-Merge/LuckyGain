@@ -1,0 +1,83 @@
+{
+  "name": "luckygain",
+  "private": true,
+  "version": "0.1.0",
+  "description": "LuckyGain — local-first personal finance",
+  "author": "LuckyGain",
+  "type": "module",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "dev": "vite",
+    "dev:desktop": "concurrently -k -n vite,electron -c cyan,magenta \"npm:dev\" \"npm:electron:dev\"",
+    "electron:dev": "wait-on http://127.0.0.1:5173 && electron . --dev",
+    "electron:preview": "npm run build && electron .",
+    "build": "tsc -b && vite build",
+    "dist": "npm run build && node scripts/dist-win.mjs",
+    "dist:dir": "npm run build && electron-builder --win dir --config.directories.output=C:/lg-build/release",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --pretty false"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "framer-motion": "^12.23.12",
+    "lucide-react": "^0.539.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.8.0",
+    "recharts": "^3.1.2",
+    "sql.js": "^1.13.0",
+    "zod": "^4.0.17"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.11",
+    "@types/react": "^19.1.9",
+    "@types/react-dom": "^19.1.7",
+    "@types/sql.js": "^1.4.9",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.0",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.15.3",
+    "tailwindcss": "^4.1.11",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.2",
+    "vitest": "^3.2.4",
+    "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.luckygain.app",
+    "productName": "LuckyGain",
+    "copyright": "Copyright © LuckyGain",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "icon": "public/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "LuckyGain"
+    }
+  }
+}
