@@ -16,3 +16,4 @@ release
 release/**
 *.exe
 *.blockmap
+_docs
