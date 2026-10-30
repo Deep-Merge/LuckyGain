@@ -211,6 +211,8 @@ function Shell({
                     onUpdateMilestone={data.handleUpdateMilestone}
                     onToggleReleased={data.handleToggleReleased}
                     onDeleteProject={data.handleDeleteProject}
+                    onDeleteMilestone={data.handleDeleteMilestone}
+                    onReorderMilestones={data.handleReorderMilestones}
                   />
                 }
               />

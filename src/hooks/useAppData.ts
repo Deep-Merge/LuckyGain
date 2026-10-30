@@ -31,7 +31,9 @@ import {
   addFreelanceProject,
   addMilestone,
   setMilestoneReleased,
+  deleteMilestone,
   deleteProject,
+  reorderProjectMilestones,
   updateFreelanceProject,
   updateMilestone,
   upsertFreelanceHandIncome,
@@ -169,6 +171,17 @@ export function useAppData() {
   const handleDeleteProject = useCallback((projectId: string) => {
     deleteProject(projectId);
   }, []);
+
+  const handleDeleteMilestone = useCallback((id: string) => {
+    deleteMilestone(id);
+  }, []);
+
+  const handleReorderMilestones = useCallback(
+    (projectId: string, orderedIds: string[]) => {
+      reorderProjectMilestones(projectId, orderedIds);
+    },
+    [],
+  );
 
   const handleUpdateProject = useCallback(
     (input: {
@@ -382,6 +395,8 @@ export function useAppData() {
     handleAddMilestone,
     handleToggleReleased,
     handleDeleteProject,
+    handleDeleteMilestone,
+    handleReorderMilestones,
     handleUpdateProject,
     handleUpdateMilestone,
     handleUpsertFreelanceHand,

@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import {
   Check,
   ChevronDown,
+  GripVertical,
   Pencil,
   Plus,
   Search,
@@ -354,6 +355,8 @@ export function ProjectsPage({
   onUpdateMilestone,
   onToggleReleased,
   onDeleteProject,
+  onDeleteMilestone,
+  onReorderMilestones,
 }: {
   projects: ProjectListItem[];
   onAddProject: (input: {
@@ -399,6 +402,8 @@ export function ProjectsPage({
     releasedAt?: string | null,
   ) => MilestoneReleaseResult | void;
   onDeleteProject: (projectId: string) => void;
+  onDeleteMilestone: (id: string) => void;
+  onReorderMilestones: (projectId: string, orderedIds: string[]) => void;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const focusProjectId = searchParams.get("project");
@@ -809,6 +814,9 @@ export function ProjectsPage({
                   }
                   onToggleReleased={handleToggleReleased}
                   onDeleteProject={() => onDeleteProject(selected.id)}
+                  onReorderMilestones={(orderedIds) =>
+                    onReorderMilestones(selected.id, orderedIds)
+                  }
                 />
               </motion.div>
             ) : (
@@ -896,6 +904,14 @@ export function ProjectsPage({
           }
           setMilestoneDraft(null);
         }}
+        onDelete={
+          milestoneDraft?.mode === "edit" && milestoneDraft.milestoneId
+            ? () => {
+                onDeleteMilestone(milestoneDraft.milestoneId!);
+                setMilestoneDraft(null);
+              }
+            : undefined
+        }
       />
 
       <ProjectCompleteModal
@@ -915,6 +931,7 @@ function ProjectBoardCard({
   onEditMilestone,
   onToggleReleased,
   onDeleteProject,
+  onReorderMilestones,
 }: {
   project: ProjectListItem;
   highlightMilestoneId?: string | null;
@@ -928,6 +945,7 @@ function ProjectBoardCard({
     releasedAt?: string | null,
   ) => MilestoneReleaseResult | void;
   onDeleteProject: () => void;
+  onReorderMilestones: (orderedIds: string[]) => void;
 }) {
   const progress = budgetProgressPct(
     project.releasedGrossCents,
@@ -940,29 +958,15 @@ function ProjectBoardCard({
     date: string;
   } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const milestonesRailRef = useRef<HTMLDivElement>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const didDragRef = useRef(false);
 
   useEffect(() => {
     setConfirmDelete(false);
+    setDragId(null);
+    setOverId(null);
   }, [project.id]);
-
-  useEffect(() => {
-    const rail = milestonesRailRef.current;
-    if (!rail) return;
-
-    function onWheel(e: WheelEvent) {
-      if (!rail) return;
-      // Prefer vertical wheel (and trackpads) for horizontal browsing of cards.
-      const primarilyVertical = Math.abs(e.deltaY) >= Math.abs(e.deltaX);
-      if (!primarilyVertical || e.deltaY === 0) return;
-      if (rail.scrollWidth <= rail.clientWidth) return;
-      e.preventDefault();
-      rail.scrollLeft += e.deltaY;
-    }
-
-    rail.addEventListener("wheel", onWheel, { passive: false });
-    return () => rail.removeEventListener("wheel", onWheel);
-  }, [project.id, project.milestones.length]);
 
   useEffect(() => {
     if (!releasePrompt) return;
@@ -979,6 +983,19 @@ function ProjectBoardCard({
 
   function dismissReleasePrompt() {
     setReleasePrompt(null);
+  }
+
+  function moveMilestone(fromId: string, toId: string) {
+    if (fromId === toId) return;
+    const ids = project.milestones.map((m) => m.id);
+    const from = ids.indexOf(fromId);
+    const to = ids.indexOf(toId);
+    if (from < 0 || to < 0) return;
+    const next = [...ids];
+    const [item] = next.splice(from, 1);
+    if (!item) return;
+    next.splice(to, 0, item);
+    onReorderMilestones(next);
   }
 
   return (
@@ -1170,17 +1187,16 @@ function ProjectBoardCard({
             Add the first milestone for this project
           </button>
         ) : (
-          <div
-            ref={milestonesRailRef}
-            className="project-milestones-rail overflow-x-auto overscroll-x-contain [scrollbar-width:thin]"
-          >
-            <div className="flex w-max min-w-full items-stretch gap-5 px-4 pt-5 pb-16">
+          <div className="project-milestones-grid">
             <AnimatePresence initial={false}>
               {project.milestones.map((ms, index) => {
                 const released = ms.status === "released";
                 const highlighted = highlightMilestoneId === ms.id;
                 const prompt =
                   releasePrompt?.id === ms.id ? releasePrompt : null;
+                const dragging = dragId === ms.id;
+                const dropTarget =
+                  overId === ms.id && dragId != null && dragId !== ms.id;
                 return (
                   <div
                     key={ms.id}
@@ -1189,7 +1205,27 @@ function ProjectBoardCard({
                       released
                         ? "project-milestone-shell--released"
                         : "project-milestone-shell--pending",
+                      dragging && "project-milestone-shell--dragging",
+                      dropTarget && "project-milestone-shell--drop",
                     )}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (dragId && dragId !== ms.id) setOverId(ms.id);
+                    }}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      if (dragId && dragId !== ms.id) setOverId(ms.id);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const fromId =
+                        e.dataTransfer.getData("text/plain") || dragId;
+                      if (fromId) moveMilestone(fromId, ms.id);
+                      setDragId(null);
+                      setOverId(null);
+                    }}
                   >
                   <motion.div
                     id={`project-milestone-${ms.id}`}
@@ -1205,6 +1241,7 @@ function ProjectBoardCard({
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (didDragRef.current) return;
                       if (prompt) {
                         dismissReleasePrompt();
                         return;
@@ -1224,7 +1261,7 @@ function ProjectBoardCard({
                     }}
                     aria-label={`Edit milestone ${ms.title || ""}`}
                     className={cn(
-                      "project-milestone relative flex h-full w-[188px] cursor-pointer scroll-mt-4 flex-col rounded-[18px] px-3.5 pt-3.5 pb-4",
+                      "project-milestone relative flex h-full w-full cursor-pointer scroll-mt-4 flex-col rounded-[18px] px-3.5 pt-3.5 pb-4",
                       released
                         ? "project-milestone--released"
                         : "project-milestone--pending",
@@ -1243,9 +1280,53 @@ function ProjectBoardCard({
                     >
                       {released ? "Released" : "Waiting"}
                     </span>
-                    <span className="text-[10px] font-semibold tracking-[0.08em] text-[#b5aa95] uppercase">
-                      MS {index + 1}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-semibold tracking-[0.08em] text-[#b5aa95] uppercase">
+                        MS {index + 1}
+                      </span>
+                      <button
+                        type="button"
+                        draggable={!prompt}
+                        aria-label={`Drag to reorder ${ms.title || "milestone"}`}
+                        title="Drag to reorder"
+                        className="project-milestone__drag pressable"
+                        onClick={(e) => e.stopPropagation()}
+                        onDragStart={(e) => {
+                          if (prompt) {
+                            e.preventDefault();
+                            return;
+                          }
+                          e.stopPropagation();
+                          didDragRef.current = true;
+                          setDragId(ms.id);
+                          setOverId(ms.id);
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", ms.id);
+                          const shell = e.currentTarget.closest(
+                            ".project-milestone-shell",
+                          );
+                          if (shell instanceof HTMLElement) {
+                            try {
+                              e.dataTransfer.setDragImage(shell, 24, 24);
+                            } catch {
+                              /* ignore */
+                            }
+                          }
+                        }}
+                        onDragEnd={() => {
+                          setDragId(null);
+                          setOverId(null);
+                          window.setTimeout(() => {
+                            didDragRef.current = false;
+                          }, 0);
+                        }}
+                      >
+                        <GripVertical
+                          className="h-3.5 w-3.5"
+                          strokeWidth={2.2}
+                        />
+                      </button>
+                    </div>
                   </div>
 
                   <p className="min-h-[40px] text-left text-[13px] leading-snug font-semibold tracking-tight text-[#3a3124]">
@@ -1435,12 +1516,11 @@ function ProjectBoardCard({
             <button
               type="button"
               onClick={onAddMilestone}
-              className="pressable project-milestone-shell project-milestone-shell--add flex w-[132px] shrink-0 flex-col items-center justify-center gap-2 self-stretch rounded-[18px] border border-dashed border-[color-mix(in_srgb,var(--color-gold)_30%,var(--color-line))] bg-[color-mix(in_srgb,var(--color-gold-soft)_22%,white)] text-[12px] font-medium text-[#8a7d66] hover:border-gold/50 hover:bg-[color-mix(in_srgb,var(--color-gold-soft)_40%,white)] hover:text-[#3a3124]"
+              className="pressable project-milestone-shell project-milestone-shell--add flex min-h-[280px] w-full flex-col items-center justify-center gap-2 rounded-[18px] border border-dashed border-[color-mix(in_srgb,var(--color-gold)_30%,var(--color-line))] bg-[color-mix(in_srgb,var(--color-gold-soft)_22%,white)] text-[12px] font-medium text-[#8a7d66] hover:border-gold/50 hover:bg-[color-mix(in_srgb,var(--color-gold-soft)_40%,white)] hover:text-[#3a3124]"
             >
               <Plus className="h-4 w-4" />
               Add
             </button>
-            </div>
           </div>
         )}
       </div>
@@ -1562,6 +1642,7 @@ function MilestoneDrawer({
   draft,
   onClose,
   onSave,
+  onDelete,
 }: {
   draft: MilestoneDraft | null;
   onClose: () => void;
@@ -1574,6 +1655,7 @@ function MilestoneDrawer({
     workMonth?: string;
     releasedAt?: string | null;
   }) => void;
+  onDelete?: () => void;
 }) {
   const open = draft != null;
   const [title, setTitle] = useState("");
@@ -1584,6 +1666,7 @@ function MilestoneDrawer({
   const [workMonth, setWorkMonth] = useState("");
   const [releasedAt, setReleasedAt] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (!draft) return;
@@ -1599,6 +1682,7 @@ function MilestoneDrawer({
     setWorkMonth(draft.workMonth ?? "");
     setReleasedAt(toDateInput(draft.releasedAt));
     setError(null);
+    setConfirmDelete(false);
   }, [draft]);
 
   const amountNum = Number(amount);
@@ -1656,6 +1740,40 @@ function MilestoneDrawer({
       }}
       submitLabel={draft?.mode === "edit" ? "Save changes" : "Save milestone"}
       disabled={!(amountNum > 0) || !feesValid}
+      footerStart={
+        onDelete ? (
+          confirmDelete ? (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmDelete(false);
+                  onDelete();
+                }}
+                className="pressable projects-modal__delete-confirm"
+              >
+                Yes, delete
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="pressable projects-modal__delete-cancel"
+              >
+                No
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="pressable projects-modal__delete"
+            >
+              <Trash2 className="h-3.5 w-3.5" strokeWidth={2.1} />
+              Delete
+            </button>
+          )
+        ) : undefined
+      }
     >
       <Field label="Title">
         <input
@@ -1956,6 +2074,7 @@ function ModalShell({
   onSubmit,
   submitLabel,
   disabled,
+  footerStart,
   children,
 }: {
   open: boolean;
@@ -1967,6 +2086,7 @@ function ModalShell({
   onSubmit: () => void;
   submitLabel: string;
   disabled?: boolean;
+  footerStart?: ReactNode;
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -2035,22 +2155,32 @@ function ModalShell({
 
             <div className="projects-modal__body">{children}</div>
 
-            <div className="projects-modal__footer">
-              <button
-                type="button"
-                onClick={onClose}
-                className="pressable projects-modal__cancel"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={onSubmit}
-                className="pressable projects-modal__submit"
-              >
-                {submitLabel}
-              </button>
+            <div
+              className={cn(
+                "projects-modal__footer",
+                footerStart && "projects-modal__footer--with-start",
+              )}
+            >
+              {footerStart ? (
+                <div className="projects-modal__footer-start">{footerStart}</div>
+              ) : null}
+              <div className="projects-modal__footer-actions">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="pressable projects-modal__cancel"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={onSubmit}
+                  className="pressable projects-modal__submit"
+                >
+                  {submitLabel}
+                </button>
+              </div>
             </div>
           </motion.div>
         </>

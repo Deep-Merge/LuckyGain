@@ -1,6 +1,6 @@
 import { addMonths, format, parse } from "date-fns";
 import { uid } from "../dates";
-import { exec, execOne, run } from "./client";
+import { exec, execOne, run, withTransaction } from "./client";
 import { getPartnerMonthRollups } from "./purse";
 
 export type MilestoneStatus = "unreleased" | "released";
@@ -372,10 +372,11 @@ export function addMilestone(input: {
   const feeBps = transferFeeBps + accountFeeBps;
   const id = uid("ms");
   const sort =
-    execOne<{ c: number }>(
-      `SELECT COUNT(*) AS c FROM milestones WHERE project_id = ? AND work_month = ?`,
-      [input.projectId, input.month],
-    )?.c ?? 0;
+    (execOne<{ c: number }>(
+      `SELECT COALESCE(MAX(sort_order), -1) + 1 AS c
+       FROM milestones WHERE project_id = ?`,
+      [input.projectId],
+    )?.c ?? 0);
 
   run(
     `INSERT INTO milestones
@@ -739,6 +740,34 @@ export function deleteMilestone(id: string): void {
   run(`DELETE FROM milestones WHERE id = ?`, [id]);
 }
 
+/** Persist display order for a project's milestones (Projects board). */
+export function reorderProjectMilestones(
+  projectId: string,
+  orderedIds: string[],
+): void {
+  const existing = exec<{ id: string }>(
+    `SELECT id FROM milestones WHERE project_id = ?`,
+    [projectId],
+  );
+  const existingIds = new Set(existing.map((r) => r.id));
+  if (
+    orderedIds.length !== existingIds.size ||
+    orderedIds.some((id) => !existingIds.has(id))
+  ) {
+    throw new Error("Invalid milestone order");
+  }
+  withTransaction(() => {
+    orderedIds.forEach((id, index) => {
+      run(
+        `UPDATE milestones
+         SET sort_order = ?, updated_at = datetime('now')
+         WHERE id = ? AND project_id = ?`,
+        [index, id, projectId],
+      );
+    });
+  });
+}
+
 export type ProjectProgressStatus =
   | "empty"
   | "pending"
@@ -823,7 +852,7 @@ export function getProjectList(): ProjectListItem[] {
             transfer_fee_bps, account_fee_bps, fee_compound,
             work_month, status, released_at
      FROM milestones
-     ORDER BY work_month ASC, sort_order ASC, created_at ASC`,
+     ORDER BY sort_order ASC, created_at ASC`,
   );
 
   const byProject = new Map<string, typeof milestones>();
@@ -950,10 +979,20 @@ export interface ProjectInsights {
     pendingNetCents: number;
     projectCount: number;
   }>;
+  /** Client/person rollup — same name (case-insensitive) is one person. */
+  byPerson: Array<{
+    key: string;
+    name: string;
+    releasedNetCents: number;
+    pendingNetCents: number;
+    projectCount: number;
+  }>;
   topProjects: Array<{
     id: string;
     name: string;
     clientName: string;
+    /** lower(clientName) for filtering */
+    personKey: string;
     projectType: ProjectType;
     releasedNetCents: number;
     pendingNetCents: number;
@@ -1020,6 +1059,17 @@ export function getProjectInsights(anchor = new Date()): ProjectInsights {
     });
   }
 
+  const personMap = new Map<
+    string,
+    {
+      key: string;
+      name: string;
+      releasedNetCents: number;
+      pendingNetCents: number;
+      projectCount: number;
+    }
+  >();
+
   let releasedNetCents = 0;
   let pendingNetCents = 0;
   let releasedGrossCents = 0;
@@ -1038,7 +1088,27 @@ export function getProjectInsights(anchor = new Date()): ProjectInsights {
       .reduce((s, m) => s + m.gross_cents, 0);
     if (p.progressStatus === "complete") finishedCount += 1;
     else activeCount += 1;
+
+    const personKey = p.client_name.trim().toLowerCase() || "unknown";
+    const person = personMap.get(personKey) ?? {
+      key: personKey,
+      name: p.client_name.trim() || "Unknown",
+      releasedNetCents: 0,
+      pendingNetCents: 0,
+      projectCount: 0,
+    };
+    person.releasedNetCents += p.releasedNetCents;
+    person.pendingNetCents += p.pendingNetCents;
+    person.projectCount += 1;
+    personMap.set(personKey, person);
   }
+
+  const byPerson = [...personMap.values()].sort(
+    (a, b) =>
+      b.releasedNetCents - a.releasedNetCents ||
+      b.pendingNetCents - a.pendingNetCents ||
+      a.name.localeCompare(b.name),
+  );
 
   const topProjects = [...projects]
     .sort(
@@ -1046,11 +1116,11 @@ export function getProjectInsights(anchor = new Date()): ProjectInsights {
         b.releasedNetCents - a.releasedNetCents ||
         b.pendingNetCents - a.pendingNetCents,
     )
-    .slice(0, 6)
     .map((p) => ({
       id: p.id,
       name: p.name,
       clientName: p.client_name,
+      personKey: p.client_name.trim().toLowerCase() || "unknown",
       projectType: p.project_type,
       releasedNetCents: p.releasedNetCents,
       pendingNetCents: p.pendingNetCents,
@@ -1061,6 +1131,7 @@ export function getProjectInsights(anchor = new Date()): ProjectInsights {
     byType: PROJECT_TYPES.map((t) => typeMap.get(t)!).filter(
       (t) => t.projectCount > 0 || t.releasedNetCents > 0 || t.pendingNetCents > 0,
     ),
+    byPerson,
     topProjects,
     totals: {
       releasedNetCents,

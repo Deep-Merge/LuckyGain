@@ -109,6 +109,7 @@ export function InsightsPage({
       ) : tab === "partners" ? (
         <PartnersTab
           rows={data.freelanceMonths}
+          usdCnyRate={data.usdCnyRate}
           onSaveJackie={onSaveJackieIncome}
           onSaveChuck={onSaveChuckIncome}
         />
@@ -125,6 +126,10 @@ export function InsightsPage({
 }
 
 function ProjectsTab({ projects }: { projects: ProjectInsights }) {
+  const [rankMode, setRankMode] = useState<"projects" | "client">("projects");
+  const [selectedClientKey, setSelectedClientKey] = useState<string | null>(
+    null,
+  );
   const monthlyFreelance = projects.months.map((m) => ({
     label: m.label,
     Released: fromCents(m.releasedNetCents),
@@ -137,14 +142,47 @@ function ProjectsTab({ projects }: { projects: ProjectInsights }) {
       value: fromCents(t.releasedNetCents),
       raw: t.releasedNetCents,
     }));
+  const rankedProjects = useMemo(
+    () => projects.topProjects.slice(0, 8),
+    [projects.topProjects],
+  );
   const maxProject = Math.max(
-    ...projects.topProjects.map((p) => p.releasedNetCents),
+    ...rankedProjects.map((p) => p.releasedNetCents),
+    1,
+  );
+  const maxClient = Math.max(
+    ...projects.byPerson.map((p) => p.releasedNetCents),
+    1,
+  );
+  const selectedClient =
+    selectedClientKey == null
+      ? null
+      : projects.byPerson.find((p) => p.key === selectedClientKey) ?? null;
+  const clientProjects = useMemo(() => {
+    if (!selectedClientKey) return [];
+    return projects.topProjects.filter((p) => p.personKey === selectedClientKey);
+  }, [selectedClientKey, projects.topProjects]);
+  const maxClientProject = Math.max(
+    ...clientProjects.map((p) => p.releasedNetCents),
     1,
   );
   const hasProjectIncome =
     projects.totals.releasedNetCents > 0 ||
     projects.totals.pendingNetCents > 0 ||
     projects.topProjects.length > 0;
+
+  useEffect(() => {
+    if (rankMode !== "client") setSelectedClientKey(null);
+  }, [rankMode]);
+
+  useEffect(() => {
+    if (
+      selectedClientKey &&
+      !projects.byPerson.some((p) => p.key === selectedClientKey)
+    ) {
+      setSelectedClientKey(null);
+    }
+  }, [projects.byPerson, selectedClientKey]);
 
   return (
     <div className="space-y-4">
@@ -347,39 +385,188 @@ function ProjectsTab({ projects }: { projects: ProjectInsights }) {
           </div>
 
           <Panel>
-            <div className="mb-4 flex items-center justify-between gap-2">
-              <h3 className="font-display text-[15px] font-semibold text-charcoal">
-                Top projects
-              </h3>
-              <Pill tone="neutral">By released net</Pill>
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h3 className="font-display text-[15px] font-semibold text-charcoal">
+                  Rankings
+                </h3>
+                <p className="mt-1 text-[12.5px] text-muted">
+                  {rankMode === "projects"
+                    ? "Top projects by released net"
+                    : selectedClient
+                      ? `${selectedClient.name} · projects`
+                      : "Clients by released net · same name is one person"}
+                </p>
+              </div>
+              <div
+                className="inline-flex rounded-lg border border-line/80 bg-white/80 p-0.5"
+                role="tablist"
+                aria-label="Rankings view"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={rankMode === "projects"}
+                  onClick={() => setRankMode("projects")}
+                  className={cn(
+                    "pressable h-7 rounded-md px-2.5 text-[11px] font-semibold",
+                    rankMode === "projects"
+                      ? "bg-gold-soft text-gold-dark shadow-[inset_0_1px_0_rgb(255_255_255/_0.7)]"
+                      : "text-muted hover:text-charcoal",
+                  )}
+                >
+                  By projects
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={rankMode === "client"}
+                  onClick={() => setRankMode("client")}
+                  className={cn(
+                    "pressable h-7 rounded-md px-2.5 text-[11px] font-semibold",
+                    rankMode === "client"
+                      ? "bg-gold-soft text-gold-dark shadow-[inset_0_1px_0_rgb(255_255_255/_0.7)]"
+                      : "text-muted hover:text-charcoal",
+                  )}
+                >
+                  By client
+                </button>
+              </div>
             </div>
-            <div className="space-y-3">
-              {projects.topProjects.map((p) => (
-                <div key={p.id}>
-                  <div className="mb-1 flex items-baseline justify-between gap-2 text-[12.5px]">
-                    <div className="min-w-0 truncate">
-                      <span className="font-medium text-charcoal">{p.name}</span>
-                      <span className="text-muted">
-                        {" "}
-                        · {p.clientName} · {p.projectType}
-                      </span>
+
+            {rankMode === "projects" ? (
+              <div className="space-y-3">
+                {rankedProjects.length === 0 ? (
+                  <p className="text-[13px] text-muted">No projects yet.</p>
+                ) : (
+                  rankedProjects.map((p) => (
+                    <div key={p.id}>
+                      <div className="mb-1 flex items-baseline justify-between gap-2 text-[12.5px]">
+                        <div className="min-w-0 truncate">
+                          <span className="font-medium text-charcoal">
+                            {p.name}
+                          </span>
+                          <span className="text-muted">
+                            {" "}
+                            · {p.clientName} · {p.projectType}
+                          </span>
+                        </div>
+                        <Money
+                          cents={p.releasedNetCents}
+                          className="shrink-0 font-semibold text-emerald"
+                        />
+                      </div>
+                      <div className="lg-progress lg-progress--sm lg-progress--emerald">
+                        <div
+                          className="lg-progress__fill"
+                          style={{
+                            width: `${(p.releasedNetCents / maxProject) * 100}%`,
+                          }}
+                        />
+                      </div>
                     </div>
-                    <Money
-                      cents={p.releasedNetCents}
-                      className="shrink-0 font-semibold text-emerald"
-                    />
+                  ))
+                )}
+              </div>
+            ) : selectedClient ? (
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedClientKey(null)}
+                  className="pressable inline-flex items-center gap-1.5 text-[12px] font-semibold text-gold-dark hover:underline"
+                >
+                  ← All clients
+                </button>
+                <div className="flex items-baseline justify-between gap-2 rounded-xl border border-emerald/20 bg-emerald-soft/35 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <div className="truncate text-[13px] font-semibold text-charcoal">
+                      {selectedClient.name}
+                    </div>
+                    <div className="text-[11px] text-muted">
+                      {selectedClient.projectCount} project
+                      {selectedClient.projectCount === 1 ? "" : "s"}
+                    </div>
                   </div>
-                  <div className="lg-progress lg-progress--sm lg-progress--emerald">
-                    <div
-                      className="lg-progress__fill"
-                      style={{
-                        width: `${(p.releasedNetCents / maxProject) * 100}%`,
-                      }}
-                    />
-                  </div>
+                  <Money
+                    cents={selectedClient.releasedNetCents}
+                    className="shrink-0 text-[14px] font-semibold text-emerald"
+                  />
                 </div>
-              ))}
-            </div>
+                {clientProjects.length === 0 ? (
+                  <p className="text-[13px] text-muted">
+                    No projects for {selectedClient.name}.
+                  </p>
+                ) : (
+                  clientProjects.map((p) => (
+                    <div key={p.id}>
+                      <div className="mb-1 flex items-baseline justify-between gap-2 text-[12.5px]">
+                        <div className="min-w-0 truncate">
+                          <span className="font-medium text-charcoal">
+                            {p.name}
+                          </span>
+                          <span className="text-muted">
+                            {" "}
+                            · {p.projectType}
+                          </span>
+                        </div>
+                        <Money
+                          cents={p.releasedNetCents}
+                          className="shrink-0 font-semibold text-emerald"
+                        />
+                      </div>
+                      <div className="lg-progress lg-progress--sm lg-progress--emerald">
+                        <div
+                          className="lg-progress__fill"
+                          style={{
+                            width: `${(p.releasedNetCents / maxClientProject) * 100}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {projects.byPerson.length === 0 ? (
+                  <p className="text-[13px] text-muted">No clients yet.</p>
+                ) : (
+                  projects.byPerson.map((person) => (
+                    <button
+                      key={person.key}
+                      type="button"
+                      onClick={() => setSelectedClientKey(person.key)}
+                      className="pressable flex w-full flex-col gap-1.5 rounded-xl border border-line/70 bg-white/70 px-3 py-2.5 text-left hover:border-emerald/30 hover:bg-emerald-soft/25"
+                    >
+                      <div className="flex items-baseline justify-between gap-2 text-[12.5px]">
+                        <div className="min-w-0 truncate">
+                          <span className="font-medium text-charcoal">
+                            {person.name}
+                          </span>
+                          <span className="text-muted">
+                            {" "}
+                            · {person.projectCount} project
+                            {person.projectCount === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                        <Money
+                          cents={person.releasedNetCents}
+                          className="shrink-0 font-semibold text-emerald"
+                        />
+                      </div>
+                      <div className="lg-progress lg-progress--sm lg-progress--emerald">
+                        <div
+                          className="lg-progress__fill"
+                          style={{
+                            width: `${(person.releasedNetCents / maxClient) * 100}%`,
+                          }}
+                        />
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </Panel>
         </>
       )}
@@ -651,12 +838,73 @@ function FreelanceTab({
   );
 }
 
+function yuanToUsdCents(cents: number, usdCnyRate: number): number {
+  if (!(usdCnyRate > 0)) return 0;
+  return Math.round(cents / usdCnyRate);
+}
+
+function PartnerStatCard({
+  title,
+  titleClass,
+  cardClass,
+  cents,
+  usdCnyRate,
+  tone,
+  amountClass,
+  hint,
+}: {
+  title: string;
+  titleClass: string;
+  cardClass: string;
+  cents: number;
+  usdCnyRate: number;
+  tone?: "income";
+  amountClass?: string;
+  hint: string;
+}) {
+  const usdCents = yuanToUsdCents(cents, usdCnyRate);
+  return (
+    <div className={cn("freelance-stat", cardClass)}>
+      <div
+        className={cn(
+          "text-[10px] font-semibold tracking-[0.08em] uppercase",
+          titleClass,
+        )}
+      >
+        {title}
+      </div>
+      <Money
+        currency="CNY"
+        cents={cents}
+        tone={tone}
+        className={cn("mt-1.5 text-[20px] font-semibold", amountClass)}
+      />
+      <div className="partner-stat-usd">
+        <span className="partner-stat-usd__paren" aria-hidden>
+          (
+        </span>
+        <Money
+          currency="USD"
+          cents={usdCents}
+          className="partner-stat-usd__amount"
+        />
+        <span className="partner-stat-usd__paren" aria-hidden>
+          )
+        </span>
+      </div>
+      <p className="mt-1 text-[11px] text-muted">{hint}</p>
+    </div>
+  );
+}
+
 function PartnersTab({
   rows,
+  usdCnyRate,
   onSaveJackie,
   onSaveChuck,
 }: {
   rows: FreelanceIncomeMonthRow[];
+  usdCnyRate: number;
   onSaveJackie: (input: { month: string; amountYuan: number }) => void;
   onSaveChuck: (input: { month: string; amountYuan: number }) => void;
 }) {
@@ -678,87 +926,71 @@ function PartnersTab({
           </h2>
           <p className="mt-1 max-w-xl text-[12.5px] text-muted">
             Partner income (editable) vs goods spend tagged to each person.
-            Benefit is income − goods.
+            Benefit is income − goods. Top boxes also show USD at{" "}
+            <span className="font-medium text-charcoal tabular">
+              {usdCnyRate}
+            </span>{" "}
+            CNY/USD.
           </p>
         </div>
         <YearSelect value={year} years={years} onChange={setYear} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <div className="freelance-stat freelance-stat--jackie-income">
-          <div className="text-[10px] font-semibold tracking-[0.08em] text-emerald uppercase">
-            Jackie income
-          </div>
-          <Money
-            currency="CNY"
-            cents={jackieIncome}
-            tone="income"
-            className="mt-1.5 text-[20px] font-semibold"
-          />
-          <p className="mt-1 text-[11px] text-muted">Synced with Goods · {year}</p>
-        </div>
-        <div className="freelance-stat freelance-stat--jackie-goods">
-          <div className="text-[10px] font-semibold tracking-[0.08em] text-coral uppercase">
-            Jackie goods
-          </div>
-          <Money
-            currency="CNY"
-            cents={jackieGoods}
-            className="mt-1.5 text-[20px] font-semibold text-coral"
-          />
-          <p className="mt-1 text-[11px] text-muted">Purchases tagged Jackie</p>
-        </div>
-        <div className="freelance-stat freelance-stat--jackie-benefit">
-          <div className="text-[10px] font-semibold tracking-[0.08em] text-gold-dark uppercase">
-            Jackie benefit
-          </div>
-          <Money
-            currency="CNY"
-            cents={jackieBenefit}
-            className={cn(
-              "mt-1.5 text-[20px] font-semibold",
-              jackieBenefit >= 0 ? "text-emerald" : "text-coral",
-            )}
-          />
-          <p className="mt-1 text-[11px] text-muted">Income − goods</p>
-        </div>
-        <div className="freelance-stat freelance-stat--chuck-income">
-          <div className="text-[10px] font-semibold tracking-[0.08em] text-emerald uppercase">
-            Chuck income
-          </div>
-          <Money
-            currency="CNY"
-            cents={chuckIncome}
-            tone="income"
-            className="mt-1.5 text-[20px] font-semibold"
-          />
-          <p className="mt-1 text-[11px] text-muted">Synced with Goods · {year}</p>
-        </div>
-        <div className="freelance-stat freelance-stat--chuck-goods">
-          <div className="text-[10px] font-semibold tracking-[0.08em] text-coral uppercase">
-            Chuck goods
-          </div>
-          <Money
-            currency="CNY"
-            cents={chuckGoods}
-            className="mt-1.5 text-[20px] font-semibold text-coral"
-          />
-          <p className="mt-1 text-[11px] text-muted">Purchases tagged Chuck</p>
-        </div>
-        <div className="freelance-stat freelance-stat--chuck-benefit">
-          <div className="text-[10px] font-semibold tracking-[0.08em] text-gold-dark uppercase">
-            Chuck benefit
-          </div>
-          <Money
-            currency="CNY"
-            cents={chuckBenefit}
-            className={cn(
-              "mt-1.5 text-[20px] font-semibold",
-              chuckBenefit >= 0 ? "text-emerald" : "text-coral",
-            )}
-          />
-          <p className="mt-1 text-[11px] text-muted">Income − goods</p>
-        </div>
+        <PartnerStatCard
+          title="Jackie income"
+          titleClass="text-emerald"
+          cardClass="freelance-stat--jackie-income"
+          cents={jackieIncome}
+          usdCnyRate={usdCnyRate}
+          tone="income"
+          hint={`Synced with Goods · ${year}`}
+        />
+        <PartnerStatCard
+          title="Jackie goods"
+          titleClass="text-coral"
+          cardClass="freelance-stat--jackie-goods"
+          cents={jackieGoods}
+          usdCnyRate={usdCnyRate}
+          amountClass="text-coral"
+          hint="Purchases tagged Jackie"
+        />
+        <PartnerStatCard
+          title="Jackie benefit"
+          titleClass="text-gold-dark"
+          cardClass="freelance-stat--jackie-benefit"
+          cents={jackieBenefit}
+          usdCnyRate={usdCnyRate}
+          amountClass={jackieBenefit >= 0 ? "text-emerald" : "text-coral"}
+          hint="Income − goods"
+        />
+        <PartnerStatCard
+          title="Chuck income"
+          titleClass="text-emerald"
+          cardClass="freelance-stat--chuck-income"
+          cents={chuckIncome}
+          usdCnyRate={usdCnyRate}
+          tone="income"
+          hint={`Synced with Goods · ${year}`}
+        />
+        <PartnerStatCard
+          title="Chuck goods"
+          titleClass="text-coral"
+          cardClass="freelance-stat--chuck-goods"
+          cents={chuckGoods}
+          usdCnyRate={usdCnyRate}
+          amountClass="text-coral"
+          hint="Purchases tagged Chuck"
+        />
+        <PartnerStatCard
+          title="Chuck benefit"
+          titleClass="text-gold-dark"
+          cardClass="freelance-stat--chuck-benefit"
+          cents={chuckBenefit}
+          usdCnyRate={usdCnyRate}
+          amountClass={chuckBenefit >= 0 ? "text-emerald" : "text-coral"}
+          hint="Income − goods"
+        />
       </div>
 
       <Panel>
