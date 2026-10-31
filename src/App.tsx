@@ -25,6 +25,7 @@ import { InsightsPage } from "@/pages/InsightsPage";
 import { GoodsPage } from "@/pages/GoodsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { wifiHost } from "@/lib/sync/wifiHost";
 
 const titles: Record<string, string> = {
   "/": "Dashboard",
@@ -49,12 +50,19 @@ function Shell({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [zoom, setZoom] = useState(() => readStoredZoom());
+  const [phoneUrl, setPhoneUrl] = useState<string | null>(null);
 
   function handleZoomChange(next: number) {
     const value = clampZoom(next);
     setZoom(value);
     writeStoredZoom(value);
   }
+
+  useEffect(() => {
+    wifiHost.start();
+    setPhoneUrl(wifiHost.pendingUrl);
+    return wifiHost.subscribe(() => setPhoneUrl(wifiHost.pendingUrl));
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -129,6 +137,29 @@ function Shell({
 
   return (
     <div className="flex h-full overflow-hidden">
+      {phoneUrl ? (
+        <div className="fixed right-6 bottom-6 z-[60] flex max-w-sm items-center gap-3 rounded-2xl border border-[color-mix(in_srgb,var(--color-gold)_40%,#ebe4d8)] bg-[#fffcf8] px-4 py-3 shadow-[0_18px_40px_-24px_rgb(42_47_43/0.45)]">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold tracking-[0.16em] text-[#a8823d] uppercase">
+              From the phone
+            </p>
+            <p className="mt-1 truncate font-display text-[15px] font-semibold text-charcoal">
+              {phoneUrl}
+            </p>
+          </div>
+          <a
+            href={phoneUrl}
+            target="_blank"
+            rel="noreferrer"
+            className={
+              "pressable shrink-0 rounded-xl border border-[color-mix(in_srgb,var(--color-gold)_40%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--color-gold-soft)_88%,white),color-mix(in_srgb,var(--color-gold-soft)_52%,white))] px-3 py-2 text-[12px] font-semibold text-[#7a5b1f]"
+            }
+            onClick={() => wifiHost.clearPending()}
+          >
+            Open
+          </a>
+        </div>
+      ) : null}
       <Sidebar onLock={onLock} passwordConfigured={passwordConfigured} />
       <div className="grain flex min-h-0 min-w-0 flex-1 flex-col">
         <TopBar

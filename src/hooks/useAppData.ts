@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useLocation } from "react-router-dom";
 import { addMonths, startOfMonth } from "date-fns";
 import { getDbVersion, initDatabase, subscribeDb } from "@/lib/db/client";
 import {
@@ -71,6 +72,7 @@ export function useAppData() {
     startOfMonth(new Date()),
   );
   const version = useDbVersion();
+  const light = useLocation().pathname === "/settings";
 
   useEffect(() => {
     let cancelled = false;
@@ -96,27 +98,27 @@ export function useAppData() {
   const summary = ready ? getDashboardSummary(monthAnchor) : null;
   const accounts = ready ? listAccounts() : [];
   const people = ready ? listPeople() : [];
-  const transactions = ready ? listTransactions(80) : [];
-  const monthTransactions = ready
-    ? listTransactionsForMonth(monthAnchor)
-    : [];
-  const expenseCategories = ready ? listCategories("expense") : [];
-  const incomeCategories = ready ? listCategories("income") : [];
-  const personSpend = ready ? spendingByPerson(monthAnchor) : [];
-  const cashflow = ready ? cashflowSeries(monthAnchor) : [];
-  const reviewCount = ready ? countReviewIssues() : 0;
+  const transactions = ready && !light ? listTransactions(80) : [];
+  const monthTransactions =
+    ready && !light ? listTransactionsForMonth(monthAnchor) : [];
+  const expenseCategories = ready && !light ? listCategories("expense") : [];
+  const incomeCategories = ready && !light ? listCategories("income") : [];
+  const personSpend = ready && !light ? spendingByPerson(monthAnchor) : [];
+  const cashflow = ready && !light ? cashflowSeries(monthAnchor) : [];
+  const reviewCount = ready && !light ? countReviewIssues() : 0;
   const userName = ready ? getUserName() : "Peter";
-  const incomeSpark = ready ? dailySparkline(monthAnchor, ["income"]) : [];
-  const expenseSpark = ready
-    ? dailySparkline(monthAnchor, ["expense", "fee"])
-    : [];
-  const topCategories = ready ? topExpenseCategories(monthAnchor) : [];
-  const budget = ready ? getBudgetForMonth(monthAnchor) : null;
-  const freelance = ready ? getFreelanceBoard() : null;
-  const projects = ready ? getProjectList() : [];
-  const insights = ready ? getInsights(monthAnchor) : null;
-  const purse = ready ? getPurseBoard() : null;
-  const attachments = ready ? listAttachments() : [];
+  const incomeSpark =
+    ready && !light ? dailySparkline(monthAnchor, ["income"]) : [];
+  const expenseSpark =
+    ready && !light ? dailySparkline(monthAnchor, ["expense", "fee"]) : [];
+  const topCategories =
+    ready && !light ? topExpenseCategories(monthAnchor) : [];
+  const budget = ready && !light ? getBudgetForMonth(monthAnchor) : null;
+  const freelance = ready && !light ? getFreelanceBoard() : null;
+  const projects = ready && !light ? getProjectList() : [];
+  const insights = ready && !light ? getInsights(monthAnchor) : null;
+  const purse = ready && !light ? getPurseBoard() : null;
+  const attachments = ready && !light ? listAttachments() : [];
   const settings = ready ? getSettingsSnapshot() : null;
 
   const addTransaction = useCallback((input: NewTransactionInput) => {

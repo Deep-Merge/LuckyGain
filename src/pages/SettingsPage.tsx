@@ -6,11 +6,13 @@ import {
 } from "@/lib/auth";
 import {
   downloadDatabaseBackup,
+  mergeGoodsFromBackup,
   resetDatabase,
   restoreDatabaseFromBackup,
 } from "@/lib/db/client";
 import type { SettingsSnapshot } from "@/lib/db/domain";
 import { Panel, PanelTitle, Pill } from "@/components/ui/primitives";
+import { GoodsSyncPanel } from "@/components/settings/GoodsSyncPanel";
 import { cn } from "@/lib/cn";
 
 const btnPrimary =
@@ -35,7 +37,9 @@ export function SettingsPage({
   const [rateError, setRateError] = useState<string | null>(null);
   const [backupName, setBackupName] = useState<string | null>(null);
   const [restoreBusy, setRestoreBusy] = useState(false);
+  const [mergeNote, setMergeNote] = useState<string | null>(null);
   const restoreInputRef = useRef<HTMLInputElement>(null);
+  const mergeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setRateDraft(String(snapshot.usdCnyRate));
@@ -88,6 +92,8 @@ export function SettingsPage({
         ) : null}
       </Panel>
 
+      <GoodsSyncPanel />
+
       <Panel>
         <PanelTitle title="Backup & data" />
         <p className="mb-4 text-[13px] leading-relaxed text-muted">
@@ -96,7 +102,9 @@ export function SettingsPage({
             .sqlite
           </code>{" "}
           snapshot anytime — it goes to your Downloads folder. Restore replaces
-          the data in this browser (or Electron) profile.
+          the ledger on this computer. Merge goods brings a phone backup in
+          beside the projects already here: a good is copied when the phone
+          copy is newer, including its photo and wallet lines.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -105,6 +113,7 @@ export function SettingsPage({
             onClick={() => {
               try {
                 setBackupName(downloadDatabaseBackup());
+                setMergeNote(null);
               } catch (e) {
                 window.alert(
                   e instanceof Error ? e.message : "Could not create backup",
@@ -121,6 +130,14 @@ export function SettingsPage({
             onClick={() => restoreInputRef.current?.click()}
           >
             {restoreBusy ? "Restoring…" : "Restore from backup"}
+          </button>
+          <button
+            type="button"
+            disabled={restoreBusy}
+            className={btnSecondary}
+            onClick={() => mergeInputRef.current?.click()}
+          >
+            {restoreBusy ? "Working…" : "Merge goods"}
           </button>
           <input
             ref={restoreInputRef}
@@ -152,6 +169,48 @@ export function SettingsPage({
               }
             }}
           />
+          <input
+            ref={mergeInputRef}
+            type="file"
+            accept=".sqlite,application/x-sqlite3,application/octet-stream"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              if (
+                !window.confirm(
+                  `Merge goods from “${file.name}” into this computer? Projects, clients, and milestones stay. A good is updated when the phone copy is newer.`,
+                )
+              ) {
+                return;
+              }
+              setRestoreBusy(true);
+              setMergeNote(null);
+              try {
+                const result = await mergeGoodsFromBackup(file);
+                const added =
+                  result.inserted === 1 ? "1 added" : `${result.inserted} added`;
+                const updated =
+                  result.updated === 1
+                    ? "1 updated"
+                    : `${result.updated} updated`;
+                const current =
+                  result.unchanged === 1
+                    ? "1 already current"
+                    : `${result.unchanged} already current`;
+                setMergeNote(
+                  `Goods merged. ${updated}, ${added}, ${current}. Projects on this computer were left in place.`,
+                );
+                setRestoreBusy(false);
+              } catch (err) {
+                window.alert(
+                  err instanceof Error ? err.message : "Could not merge goods",
+                );
+                setRestoreBusy(false);
+              }
+            }}
+          />
           <button
             type="button"
             className={btnDanger}
@@ -165,6 +224,9 @@ export function SettingsPage({
             Reset local database
           </button>
         </div>
+        {mergeNote ? (
+          <p className="mt-3 text-[12.5px] text-emerald">{mergeNote}</p>
+        ) : null}
         {backupName ? (
           <p className="mt-3 text-[12.5px] text-emerald">
             Saved as{" "}

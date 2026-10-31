@@ -1,7 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../db/ledger_store.dart';
 import '../lock/app_lock.dart';
@@ -30,6 +29,22 @@ class _LedgerShellState extends State<LedgerShell> {
   String? _error;
 
   LedgerStore get store => widget.store;
+
+  @override
+  void initState() {
+    super.initState();
+    store.addListener(_onStore);
+  }
+
+  @override
+  void dispose() {
+    store.removeListener(_onStore);
+    super.dispose();
+  }
+
+  void _onStore() {
+    if (mounted) setState(() {});
+  }
 
   void _go(int index) {
     if (index == _index) return;
@@ -90,20 +105,25 @@ class _LedgerShellState extends State<LedgerShell> {
     setState(() {
       _busy = true;
       _error = null;
+      _notice = null;
     });
     try {
       final file = await store.exportFile();
-      widget.lock.suppressLock = true;
-      await SharePlus.instance.share(
-        ShareParams(files: [XFile(file.path)], subject: 'LuckyGain backup'),
+      final name = file.uri.pathSegments.last;
+      await const MethodChannel('luckygain/files').invokeMethod<String>(
+        'saveDownloads',
+        {'name': name, 'path': file.path},
       );
       if (!mounted) return;
-      setState(() => _notice = 'Shared ${file.uri.pathSegments.last}');
+      setState(() => _notice = 'Saved in Downloads · $name');
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = 'Could not export the backup.');
+      setState(() {
+        _error = error is PlatformException && (error.message ?? '').isNotEmpty
+            ? error.message!
+            : 'Could not save the backup.';
+      });
     } finally {
-      widget.lock.suppressLock = false;
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -115,6 +135,7 @@ class _LedgerShellState extends State<LedgerShell> {
       HomePage(snapshot: snapshot, onOpenLedger: () => _go(2)),
       GoodsPage(store: store, lock: widget.lock),
       LedgerPage(
+        store: store,
         lock: widget.lock,
         busy: _busy,
         notice: _notice,

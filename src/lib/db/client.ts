@@ -11,6 +11,9 @@ import {
   snapshotGoodsMedia,
   type GoodsMediaSnap,
 } from "./goodsMedia";
+import { mergeGoodsInto, type GoodsMergeResult } from "./mergeGoods";
+
+export type { GoodsMergeResult };
 
 export const STORAGE_KEY = "luckygain.sqlite.v7";
 /** One-shot leftover bytes from localStorage, used to recover photos after a wipe. */
@@ -748,6 +751,157 @@ export async function restoreDatabaseFromBackup(file: File): Promise<void> {
   persist();
   await persistChain;
   notify();
+}
+
+/** Bring newer goods from a phone backup into the live ledger. Projects stay. */
+export async function mergeGoodsFromBackup(
+  file: File,
+): Promise<GoodsMergeResult> {
+  const sql = await loadSqlJs();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!bytes.byteLength) {
+    throw new Error("Backup file is empty");
+  }
+
+  let incoming: Database;
+  try {
+    incoming = new sql.Database(bytes);
+  } catch {
+    throw new Error("Not a valid SQLite backup");
+  }
+
+  try {
+    const probe = incoming.exec(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='accounts' LIMIT 1",
+    );
+    if (!probe.length || !probe[0]?.values?.length) {
+      throw new Error("Backup is missing LuckyGain tables");
+    }
+    let result: GoodsMergeResult = {
+      inserted: 0,
+      updated: 0,
+      unchanged: 0,
+      changes: [],
+    };
+    withTransaction(() => {
+      result = mergeGoodsInto(getDb(), incoming);
+    });
+    return result;
+  } finally {
+    incoming.close();
+  }
+}
+
+const SYNC_GOODS_FIELDS = [
+  "id",
+  "title",
+  "price_cents",
+  "purchased_on",
+  "for_whom",
+  "category",
+  "url",
+  "notes",
+  "image_data_url",
+  "returned_on",
+  "enabled",
+  "comment",
+  "called_price_cents",
+  "soft_deleted",
+  "created_at",
+  "updated_at",
+] as const;
+
+const SYNC_PURSE_FIELDS = [
+  "id",
+  "kind",
+  "amount_cents",
+  "occurred_on",
+  "note",
+  "goods_id",
+  "soft_deleted",
+  "created_at",
+  "updated_at",
+] as const;
+
+/** Apply goods received over sync. Projects and unlinked wallet lines stay. */
+export async function applySyncedGoods(
+  goods: Array<Record<string, unknown>>,
+  purse: Array<Record<string, unknown>>,
+): Promise<GoodsMergeResult> {
+  if (!goods.length) {
+    return { inserted: 0, updated: 0, unchanged: 0, changes: [] };
+  }
+  const sql = await loadSqlJs();
+  const incoming = new sql.Database();
+  try {
+    incoming.run(`CREATE TABLE goods (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      price_cents INTEGER,
+      purchased_on TEXT,
+      for_whom TEXT,
+      category TEXT,
+      url TEXT,
+      notes TEXT,
+      image_data_url TEXT,
+      returned_on TEXT,
+      enabled INTEGER,
+      comment TEXT,
+      called_price_cents INTEGER,
+      soft_deleted INTEGER,
+      created_at TEXT,
+      updated_at TEXT
+    )`);
+    incoming.run(`CREATE TABLE purse_entries (
+      id TEXT PRIMARY KEY,
+      kind TEXT,
+      amount_cents INTEGER,
+      occurred_on TEXT,
+      note TEXT,
+      goods_id TEXT,
+      soft_deleted INTEGER,
+      created_at TEXT,
+      updated_at TEXT
+    )`);
+    for (const row of goods) insertSyncRow(incoming, "goods", SYNC_GOODS_FIELDS, row);
+    for (const row of purse) {
+      insertSyncRow(incoming, "purse_entries", SYNC_PURSE_FIELDS, row);
+    }
+    let result: GoodsMergeResult = {
+      inserted: 0,
+      updated: 0,
+      unchanged: 0,
+      changes: [],
+    };
+    withTransaction(() => {
+      result = mergeGoodsInto(getDb(), incoming);
+    });
+    return result;
+  } finally {
+    incoming.close();
+  }
+}
+
+function insertSyncRow(
+  database: Database,
+  table: "goods" | "purse_entries",
+  fields: readonly string[],
+  row: Record<string, unknown>,
+) {
+  const names = fields.filter((name) => row[name] !== undefined);
+  if (!names.includes("id")) return;
+    database.run(
+    `INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map(() => "?").join(", ")})`,
+    names.map((name) => sqlValue(row[name])),
+  );
+}
+
+function sqlValue(value: unknown): string | number | Uint8Array | null {
+  if (value == null) return null;
+  if (typeof value === "string" || typeof value === "number") return value;
+  if (value instanceof Uint8Array) return value;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  return String(value);
 }
 
 export function run(sql: string, params: unknown[] = []): void {

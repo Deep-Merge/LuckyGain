@@ -3,18 +3,26 @@ import 'package:flutter/material.dart';
 import '../theme/lg_colors.dart';
 
 class LgCard extends StatelessWidget {
-  const LgCard({super.key, required this.child, this.padding});
+  const LgCard({
+    super.key,
+    required this.child,
+    this.padding,
+    this.color,
+    this.borderColor,
+  });
 
   final Widget child;
   final EdgeInsetsGeometry? padding;
+  final Color? color;
+  final Color? borderColor;
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Lg.panel,
+        color: color ?? Lg.panel,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Lg.line),
+        border: Border.all(color: borderColor ?? Lg.line),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0A2A2F2B),

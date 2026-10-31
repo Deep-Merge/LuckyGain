@@ -59,6 +59,18 @@ class _GoodsPageState extends State<GoodsPage> {
     super.initState();
     _month = _todayMonth();
     _apply(preferLatest: true);
+    widget.store.addListener(_onStore);
+  }
+
+  void _onStore() {
+    if (!mounted) return;
+    setState(() => _apply());
+  }
+
+  @override
+  void dispose() {
+    widget.store.removeListener(_onStore);
+    super.dispose();
   }
 
   String _todayMonth() {
@@ -130,6 +142,7 @@ class _GoodsPageState extends State<GoodsPage> {
     final total = _goods
         .where((good) => good.enabled)
         .fold<int>(0, (sum, good) => sum + good.priceCents);
+    final off = _goods.where((good) => !good.enabled).length;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
@@ -200,7 +213,9 @@ class _GoodsPageState extends State<GoodsPage> {
               ),
               const Spacer(),
               Text(
-                '${_goods.length} · ${formatYuan(total)}',
+                off == 0
+                    ? '${_goods.length} · ${formatYuan(total)}'
+                    : '${_goods.length} · ${formatYuan(total)} · $off off',
                 style: const TextStyle(
                   fontFamily: Lg.sans,
                   fontSize: 12.5,
@@ -248,6 +263,8 @@ class _GoodTile extends StatelessWidget {
         : whomLabel(good.whom);
     return LgCard(
       padding: const EdgeInsets.fromLTRB(10, 10, 14, 10),
+      color: good.enabled ? null : const Color(0xFFFFF6F3),
+      borderColor: good.enabled ? null : const Color(0x66E38874),
       child: Row(
         children: [
           _Check(on: checked, onTap: onCheck),
@@ -258,10 +275,7 @@ class _GoodTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               child: Row(
                 children: [
-                  Opacity(
-                    opacity: good.enabled ? 1 : 0.45,
-                    child: GoodPhoto(dataUrl: good.imageDataUrl),
-                  ),
+                  GoodPhoto(dataUrl: good.imageDataUrl),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -275,7 +289,7 @@ class _GoodTile extends StatelessWidget {
                             fontFamily: Lg.sans,
                             fontWeight: FontWeight.w600,
                             fontSize: 14.5,
-                            color: good.enabled ? Lg.charcoal : Lg.muted,
+                            color: Lg.charcoal,
                           ),
                         ),
                         const SizedBox(height: 3),
@@ -328,20 +342,57 @@ class _GoodTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    formatYuan(-good.priceCents),
-                    style: TextStyle(
-                      fontFamily: Lg.sans,
-                      fontWeight: FontWeight.w600,
-                      color: good.enabled ? Lg.coral : Lg.muted,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _CountPill(on: good.enabled),
+                      const SizedBox(height: 8),
+                      Text(
+                        formatYuan(-good.priceCents),
+                        style: TextStyle(
+                          fontFamily: Lg.sans,
+                          fontWeight: FontWeight.w600,
+                          color: good.enabled ? Lg.coral : Lg.muted,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CountPill extends StatelessWidget {
+  const _CountPill({required this.on});
+
+  final bool on;
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = on ? Lg.emerald : Lg.coral;
+    final wash = on ? Lg.emeraldSoft : Lg.coralSoft;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: wash,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: tone.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        on ? 'On' : 'Off',
+        style: TextStyle(
+          fontFamily: Lg.sans,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.2,
+          color: tone,
+        ),
       ),
     );
   }

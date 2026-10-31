@@ -11,6 +11,7 @@ src-tauri/target
 !.vscode/extensions.json
 .env
 .env.*
+electron/wifi-sync-code.txt
 !.env.example
 release
 release/**

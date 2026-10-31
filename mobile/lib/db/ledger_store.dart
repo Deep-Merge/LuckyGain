@@ -97,6 +97,21 @@ class LedgerStore {
   LedgerSnapshot snapshot = const LedgerSnapshot(ready: false);
   String? notice;
   String? error;
+  final _listeners = <void Function()>[];
+
+  void addListener(void Function() listener) {
+    _listeners.add(listener);
+  }
+
+  void removeListener(void Function() listener) {
+    _listeners.remove(listener);
+  }
+
+  void _emit() {
+    for (final listener in List<void Function()>.of(_listeners)) {
+      listener();
+    }
+  }
 
   Future<void> open() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -191,12 +206,15 @@ class LedgerStore {
       snapshot = const LedgerSnapshot(ready: true);
       error = 'This backup opened, but some tables could not be read.';
     }
+    _emit();
   }
 
   void clearNotice() {
     notice = null;
     error = null;
   }
+
+  Database get database => _require();
 
   Database _require() {
     final db = _db;
@@ -499,8 +517,9 @@ class LedgerStore {
     final where = _hasColumn(db, 'goods', 'soft_deleted')
         ? 'WHERE soft_deleted = 0'
         : '';
+    final enabledCol = _hasColumn(db, 'goods', 'enabled') ? ', enabled' : '';
     final rows = db.select('''
-      SELECT title, price_cents, purchased_on, for_whom
+      SELECT title, price_cents, purchased_on, for_whom$enabledCol
       FROM goods
       $where
       ORDER BY purchased_on DESC
@@ -515,6 +534,7 @@ class LedgerStore {
             priceCents: _int(row['price_cents']),
             purchasedOn: (row['purchased_on'] as String?) ?? '',
             whom: (row['for_whom'] as String?) ?? '',
+            enabled: row['enabled'] == null || _int(row['enabled']) != 0,
           ),
         )
         .toList();

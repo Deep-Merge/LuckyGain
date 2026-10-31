@@ -13,11 +13,9 @@ const _bioKey = 'luckygain.lock.biometric';
 
 /// Phone lock. The password never goes into the ledger backup.
 class AppLock extends ChangeNotifier {
-  AppLock({
-    FlutterSecureStorage? storage,
-    LocalAuthentication? auth,
-  }) : _storage = storage ?? const FlutterSecureStorage(),
-       _auth = auth ?? LocalAuthentication();
+  AppLock({FlutterSecureStorage? storage, LocalAuthentication? auth})
+    : _storage = storage ?? const FlutterSecureStorage(),
+      _auth = auth ?? LocalAuthentication();
 
   final FlutterSecureStorage _storage;
   final LocalAuthentication _auth;
@@ -49,11 +47,13 @@ class AppLock extends ChangeNotifier {
       unlocked = true;
     }
     try {
-      biometricAvailable = await _auth.canCheckBiometrics;
+      final supported = await _auth.isDeviceSupported();
+      final canCheck = await _auth.canCheckBiometrics;
+      final kinds = await _auth.getAvailableBiometrics();
+      biometricAvailable = supported || canCheck || kinds.isNotEmpty;
     } catch (_) {
-      biometricAvailable = false;
+      biometricAvailable = true;
     }
-    if (!biometricAvailable) biometricEnabled = false;
     notifyListeners();
   }
 
@@ -121,9 +121,6 @@ class AppLock extends ChangeNotifier {
   }
 
   Future<String?> enableFingerprint() async {
-    if (!biometricAvailable) {
-      return 'This phone has no fingerprint reader.';
-    }
     suppressLock = true;
     try {
       final ok = await _auth.authenticate(
@@ -141,12 +138,13 @@ class AppLock extends ChangeNotifier {
         notifyListeners();
         return 'This phone has no fingerprint reader.';
       }
-      return null;
+      return 'The fingerprint prompt could not open.';
     } finally {
       suppressLock = false;
     }
     await _storage.write(key: _bioKey, value: '1');
     biometricEnabled = true;
+    biometricAvailable = true;
     notifyListeners();
     return null;
   }

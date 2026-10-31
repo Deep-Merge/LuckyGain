@@ -99,11 +99,13 @@ class HomePage extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 3),
                                 Text(
-                                  '${formatDotDate(good.purchasedOn)} · ${whomLabel(good.whom)}',
-                                  style: const TextStyle(
+                                  good.enabled
+                                      ? '${formatDotDate(good.purchasedOn)} · ${whomLabel(good.whom)}'
+                                      : '${formatDotDate(good.purchasedOn)} · ${whomLabel(good.whom)} · Off',
+                                  style: TextStyle(
                                     fontFamily: Lg.sans,
                                     fontSize: 12,
-                                    color: Lg.muted,
+                                    color: good.enabled ? Lg.muted : Lg.coral,
                                   ),
                                 ),
                               ],

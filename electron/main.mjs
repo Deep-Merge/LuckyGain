@@ -2,6 +2,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, shell } from "electron";
+import { startWifiRelay } from "./wifiRelay.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEV_URL = "http://127.0.0.1:5173";
@@ -62,6 +63,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  if (!useDevServer) startWifiRelay();
   createWindow();
 
   app.on("activate", () => {
